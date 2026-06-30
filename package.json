@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build",
-    "start": "next start -p 3001"
+    "start": "next start -p 3001",
+    "gen:types": "tsx scripts/gen-go-types.ts",
+    "gen:types:check": "tsx scripts/gen-go-types.ts --check"
   },
   "dependencies": {
     "lucide-react": "^1.22.0",
@@ -21,6 +23,7 @@
     "autoprefixer": "^10.5.2",
     "postcss": "^8.5.16",
     "tailwindcss": "^3",
+    "tsx": "^4.22.4",
     "typescript": "^5"
   }
 }

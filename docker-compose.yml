@@ -1,0 +1,21 @@
+# Chat frontend (lov-chat) deploy for the VPS. Deploy:  docker compose up -d
+#
+# TLS / reverse proxy is handled by nginx on the host (NOT in this stack).
+# nginx should proxy the chat domain -> http://127.0.0.1:3001
+#
+# Auto-updates: this container carries the watchtower.enable label, and the
+# Watchtower already running in the api stack watches the whole Docker host,
+# so it pulls & restarts this on each new :latest push. No Watchtower service
+# here on purpose — two on one host would double-update and race. (If chat ever
+# moves to its own host, add a Watchtower service like the api stack has.)
+
+services:
+  chat:
+    image: ghcr.io/richardwallier/lov-chat:latest
+    restart: unless-stopped
+    # Listens on 3001, bound to localhost so only the host's nginx can reach it
+    # (not exposed directly to the internet).
+    ports:
+      - "127.0.0.1:3001:3001"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"

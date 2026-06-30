@@ -1,15 +1,11 @@
 import { env } from '@/lib/env';
+import type { LoginRequest, RegisterRequest } from '@/types/generated';
 
-export interface LoginPayload {
-  email: string;
-  password: string;
-}
-
-export interface RegisterPayload {
-  email: string;
-  username: string;
-  password: string;
-}
+// Request bodies are generated from the Go DTOs (api/dto/*.go) — the single
+// source of truth. Run `yarn gen:types` after changing them; any drift shows up
+// as a type error wherever these are used.
+export type LoginPayload = LoginRequest;
+export type RegisterPayload = RegisterRequest;
 
 // POST /auth/login → returns raw JWT string
 export async function login(_payload: LoginPayload): Promise<string> {
