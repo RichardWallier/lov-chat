@@ -18,6 +18,7 @@ export interface SFUClientOptions {
   onParticipantJoined: (participant: RemoteParticipant) => void;
   onParticipantLeft: (id: string) => void;
   onSpeakingChange: (id: string, isSpeaking: boolean) => void;
+  onPing: (ms: number) => void;
 }
 
 interface WSMessage {
@@ -61,6 +62,9 @@ export class SFUClient {
 
   private readonly audioElements = new Map<string, HTMLAudioElement>();
   private readonly speakingMonitors = new Map<string, SpeakingMonitor>();
+
+  // Polls the active ICE candidate pair's round-trip time for the latency badge.
+  private latencyIntervalId: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: SFUClientOptions) {
     this.options = options;
@@ -125,12 +129,20 @@ export class SFUClient {
     ws.onclose = () => {
       if (!this.closing) this.options.onStatusChange('disconnected');
     };
+
+    // 6. Report real media RTT (UDP path to the SFU) for the latency badge.
+    this.startLatencyPolling();
   }
 
   disconnect(): void {
     // SFU has no "leave" message — closing the socket lets the server detect the
     // drop and clean up our peer.
     this.closing = true;
+
+    if (this.latencyIntervalId !== null) {
+      clearInterval(this.latencyIntervalId);
+      this.latencyIntervalId = null;
+    }
 
     this.stopAllSpeakingDetection();
 
@@ -163,6 +175,36 @@ export class SFUClient {
       element.remove();
     }
     this.audioElements.clear();
+  }
+
+  // Every few seconds, read the negotiated candidate pair's RTT and report it.
+  // This is the real audio-path latency (UDP, direct to the SFU) — not the
+  // signaling/WebSocket path, which detours through nginx + Cloudflare.
+  private startLatencyPolling(): void {
+    const POLL_MS = 3000;
+    this.latencyIntervalId = setInterval(() => {
+      void this.pollLatency();
+    }, POLL_MS);
+  }
+
+  private async pollLatency(): Promise<void> {
+    const pc = this.pc;
+    if (!pc) return;
+    try {
+      const stats = await pc.getStats();
+      stats.forEach((report) => {
+        if (report.type !== 'candidate-pair') return;
+        const pair = report as RTCIceCandidatePairStats;
+        if (
+          pair.state === 'succeeded' &&
+          typeof pair.currentRoundTripTime === 'number'
+        ) {
+          this.options.onPing(Math.round(pair.currentRoundTripTime * 1000));
+        }
+      });
+    } catch {
+      // getStats can reject while the connection is tearing down — ignore.
+    }
   }
 
   private send(message: WSMessage): void {

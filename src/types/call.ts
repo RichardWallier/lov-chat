@@ -14,7 +14,7 @@ export interface RemoteParticipant {
 export interface CallState {
   status: ConnectionStatus;
   isMuted: boolean;
-  ping: number | null; // null = not implemented yet
+  ping: number | null; // media-path RTT in ms; null until connected
   localStream: MediaStream | null;
   participants: RemoteParticipant[];
 }

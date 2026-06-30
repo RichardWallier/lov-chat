@@ -26,7 +26,8 @@ export const useCallStore = create<Store>()((set, get) => ({
 
     const sfu = new SFUClient({
       wsUrl: `${env.apiWsUrl}/ws`,
-      onStatusChange: (status: ConnectionStatus) => set({ status }),
+      onStatusChange: (status: ConnectionStatus) =>
+        set(status === 'connected' ? { status } : { status, ping: null }),
       onLocalStream: (localStream: MediaStream) => set({ localStream }),
       onParticipantJoined: (p: RemoteParticipant) =>
         set((s) => ({ participants: [...s.participants, p] })),
@@ -38,6 +39,7 @@ export const useCallStore = create<Store>()((set, get) => ({
             p.id === id ? { ...p, isSpeaking } : p,
           ),
         })),
+      onPing: (ms: number) => set({ ping: ms }),
     });
     client = sfu;
 
@@ -49,6 +51,7 @@ export const useCallStore = create<Store>()((set, get) => ({
       client = null;
       set({
         status: 'failed',
+        ping: null,
         localStream: null,
         participants: [],
         isMuted: false,
@@ -61,6 +64,7 @@ export const useCallStore = create<Store>()((set, get) => ({
     client = null;
     set({
       status: 'disconnected',
+      ping: null,
       localStream: null,
       participants: [],
       isMuted: false,
