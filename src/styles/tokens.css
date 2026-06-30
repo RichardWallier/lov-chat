@@ -1,0 +1,30 @@
+:root {
+  /* Background layers */
+  --color-bg-base: #0f1117;
+  --color-bg-elevated: #1a1d27;
+  --color-bg-surface: #22263a;
+  --color-bg-overlay: #2c3150;
+
+  /* Brand */
+  --color-brand: #5865f2;
+  --color-brand-hover: #4752c4;
+
+  /* Status */
+  --color-success: #23a55a;
+  --color-warning: #f0b232;
+  --color-danger: #f23f42;
+  --color-muted: #4e5058;
+
+  /* Text */
+  --color-text-primary: #e3e5e8;
+  --color-text-secondary: #b5bac1;
+  --color-text-muted: #72767d;
+
+  /* Misc */
+  --color-border: #1e2030;
+  --color-ring-speaking: #23a55a;
+
+  /* Radius */
+  --radius-card: 1rem;
+  --radius-pill: 9999px;
+}
