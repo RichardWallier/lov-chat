@@ -4,6 +4,7 @@ import type { ConnectionStatus } from '@/types/call';
 interface CallControlsProps {
   status: ConnectionStatus;
   isMuted: boolean;
+  joinDisabled: boolean;
   onJoin: () => void;
   onLeave: () => void;
   onToggleMute: () => void;
@@ -12,6 +13,7 @@ interface CallControlsProps {
 export function CallControls({
   status,
   isMuted,
+  joinDisabled,
   onJoin,
   onLeave,
   onToggleMute,
@@ -52,7 +54,8 @@ export function CallControls({
           <button
             type="button"
             onClick={onJoin}
-            className="flex h-12 items-center gap-2 rounded-pill bg-brand px-6 font-medium text-text-primary transition-colors hover:bg-brand-hover"
+            disabled={joinDisabled}
+            className="flex h-12 items-center gap-2 rounded-pill bg-brand px-6 font-medium text-text-primary transition-colors enabled:hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Phone className="h-5 w-5" aria-hidden="true" />
             Join

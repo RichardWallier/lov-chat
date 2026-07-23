@@ -20,7 +20,7 @@ export interface CallState {
 }
 
 export interface CallActions {
-  join: () => Promise<void>;
+  join: (roomId: string) => Promise<void>;
   leave: () => void;
   toggleMute: () => void;
 }

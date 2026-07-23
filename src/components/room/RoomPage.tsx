@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useCallStore } from '@/store/callStore';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { PingBadge } from '@/components/ui/PingBadge';
@@ -16,10 +17,23 @@ export function RoomPage() {
   const leave = useCallStore((s) => s.leave);
   const toggleMute = useCallStore((s) => s.toggleMute);
 
+  const [roomId, setRoomId] = useState('global');
+  const inCall = status === 'connecting' || status === 'connected';
+  const trimmedRoomId = roomId.trim();
+
   return (
     <main className="relative flex min-h-screen flex-col bg-bg-base text-text-primary">
-      <header className="flex items-center justify-between px-6 py-5">
+      <header className="flex items-center justify-between gap-3 px-6 py-5">
         <StatusPill status={status} />
+        <input
+          type="text"
+          value={roomId}
+          onChange={(e) => setRoomId(e.target.value)}
+          disabled={inCall}
+          placeholder="room id"
+          aria-label="Room ID"
+          className="w-40 rounded-pill border border-border bg-bg-surface px-4 py-1.5 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
+        />
         <PingBadge ping={ping} />
       </header>
 
@@ -34,8 +48,9 @@ export function RoomPage() {
       <CallControls
         status={status}
         isMuted={isMuted}
+        joinDisabled={trimmedRoomId === ''}
         onJoin={() => {
-          void join();
+          void join(trimmedRoomId);
         }}
         onLeave={leave}
         onToggleMute={toggleMute}

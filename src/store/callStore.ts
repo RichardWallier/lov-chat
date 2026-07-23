@@ -20,12 +20,14 @@ export const useCallStore = create<Store>()((set, get) => ({
   localStream: null,
   participants: [],
 
-  join: async () => {
+  join: async (roomId: string) => {
     if (client) return;
     set({ status: 'connecting' });
 
     const sfu = new SFUClient({
-      wsUrl: `${env.apiWsUrl}/ws`,
+      // Room ID is a path segment on the SFU: /ws/{roomID}. encodeURIComponent
+      // keeps arbitrary room names (spaces, slashes) from breaking the URL.
+      wsUrl: `${env.apiWsUrl}/ws/${encodeURIComponent(roomId)}`,
       onStatusChange: (status: ConnectionStatus) =>
         set(status === 'connected' ? { status } : { status, ping: null }),
       onLocalStream: (localStream: MediaStream) => set({ localStream }),
