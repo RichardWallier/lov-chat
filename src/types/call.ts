@@ -14,6 +14,7 @@ export interface RemoteParticipant {
 export interface CallState {
   status: ConnectionStatus;
   isMuted: boolean;
+  isLocalSpeaking: boolean; // our own voice-activity, for the "You" card
   ping: number | null; // media-path RTT in ms; null until connected
   localStream: MediaStream | null;
   participants: RemoteParticipant[];

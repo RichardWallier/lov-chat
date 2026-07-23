@@ -18,6 +18,7 @@ export interface SFUClientOptions {
   onParticipantJoined: (participant: RemoteParticipant) => void;
   onParticipantLeft: (id: string) => void;
   onSpeakingChange: (id: string, isSpeaking: boolean) => void;
+  onLocalSpeakingChange: (isSpeaking: boolean) => void;
   onPing: (ms: number) => void;
 }
 
@@ -36,6 +37,9 @@ const ICE_SERVERS: RTCConfiguration = {
 };
 
 const AUDIO_CONTAINER_ID = 'audio-container';
+// Reserved key for our own mic in the speaking-monitor map. Remote keys are
+// random stream IDs, so this never collides.
+const LOCAL_MONITOR_KEY = '__local__';
 // RMS over the 0..255 frequency data; ~15 reliably separates speech from idle noise.
 const SPEAKING_THRESHOLD = 15;
 const SPEAKING_POLL_MS = 100;
@@ -81,6 +85,13 @@ export class SFUClient {
     });
     this.localStream = stream;
     this.options.onLocalStream(stream);
+
+    // Voice-activity detection on our own mic so the local card lights up too.
+    // A muted track (track.enabled = false) delivers silence, so this naturally
+    // reports "not speaking" while muted.
+    this.startSpeakingDetection(stream, LOCAL_MONITOR_KEY, (speaking) =>
+      this.options.onLocalSpeakingChange(speaking),
+    );
 
     // 2. One PeerConnection to the SFU. Push our mic track up.
     const pc = new RTCPeerConnection(ICE_SERVERS);
@@ -269,7 +280,9 @@ export class SFUClient {
       this.audioElements.set(id, element);
       this.getAudioContainer()?.appendChild(element);
       this.options.onParticipantJoined({ id, stream, isSpeaking: false });
-      this.startSpeakingDetection(stream, id);
+      this.startSpeakingDetection(stream, id, (speaking) =>
+        this.options.onSpeakingChange(id, speaking),
+      );
     }
     element.srcObject = stream;
 
@@ -293,7 +306,11 @@ export class SFUClient {
     return document.getElementById(AUDIO_CONTAINER_ID);
   }
 
-  private startSpeakingDetection(stream: MediaStream, id: string): void {
+  private startSpeakingDetection(
+    stream: MediaStream,
+    key: string,
+    onChange: (isSpeaking: boolean) => void,
+  ): void {
     const context = new AudioContext();
     const source = context.createMediaStreamSource(stream);
     const analyser = context.createAnalyser();
@@ -312,11 +329,11 @@ export class SFUClient {
       const next = rms > SPEAKING_THRESHOLD;
       if (next !== speaking) {
         speaking = next;
-        this.options.onSpeakingChange(id, next);
+        onChange(next);
       }
     }, SPEAKING_POLL_MS);
 
-    this.speakingMonitors.set(id, { context, intervalId });
+    this.speakingMonitors.set(key, { context, intervalId });
   }
 
   private stopSpeakingDetection(id: string): void {

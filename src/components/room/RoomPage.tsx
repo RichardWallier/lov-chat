@@ -10,6 +10,7 @@ import { CallControls } from './CallControls';
 export function RoomPage() {
   const status = useCallStore((s) => s.status);
   const isMuted = useCallStore((s) => s.isMuted);
+  const isLocalSpeaking = useCallStore((s) => s.isLocalSpeaking);
   const ping = useCallStore((s) => s.ping);
   const localStream = useCallStore((s) => s.localStream);
   const participants = useCallStore((s) => s.participants);
@@ -41,6 +42,7 @@ export function RoomPage() {
         <ParticipantGrid
           participants={participants}
           isMuted={isMuted}
+          isLocalSpeaking={isLocalSpeaking}
           localStream={localStream}
         />
       </section>

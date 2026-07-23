@@ -16,20 +16,56 @@ type Store = CallState & CallActions;
 export const useCallStore = create<Store>()((set, get) => ({
   status: 'idle',
   isMuted: false,
+  isLocalSpeaking: false,
   ping: null,
   localStream: null,
   participants: [],
 
   join: async (roomId: string) => {
-    if (client) return;
-    set({ status: 'connecting' });
+    // Guard on live status, NOT on `client`: a failed/dropped connection leaves
+    // `client` set but the socket dead. Only block while actually connecting or
+    // connected — otherwise a Join after a failure would be silently ignored.
+    const { status } = get();
+    if (status === 'connecting' || status === 'connected') return;
+
+    // Release any dead client left over from a previous failed/dropped attempt
+    // so we start clean. disconnect() is idempotent and silences late callbacks.
+    client?.disconnect();
+    client = null;
+
+    set({
+      status: 'connecting',
+      ping: null,
+      localStream: null,
+      participants: [],
+      isMuted: false,
+      isLocalSpeaking: false,
+    });
 
     const sfu = new SFUClient({
       // Room ID is a path segment on the SFU: /ws/{roomID}. encodeURIComponent
       // keeps arbitrary room names (spaces, slashes) from breaking the URL.
       wsUrl: `${env.apiWsUrl}/ws/${encodeURIComponent(roomId)}`,
-      onStatusChange: (status: ConnectionStatus) =>
-        set(status === 'connected' ? { status } : { status, ping: null }),
+      onStatusChange: (status: ConnectionStatus) => {
+        // 'failed' is terminal and never recovers on its own. Release the client
+        // here so the next Join starts fresh, and reset the call state. Doing
+        // this also silences the 'disconnected' that the socket close fires
+        // right after, so the UI settles on "failed" instead of flipping.
+        if (status === 'failed') {
+          client?.disconnect();
+          client = null;
+          set({
+            status,
+            ping: null,
+            localStream: null,
+            participants: [],
+            isMuted: false,
+            isLocalSpeaking: false,
+          });
+          return;
+        }
+        set(status === 'connected' ? { status } : { status, ping: null });
+      },
       onLocalStream: (localStream: MediaStream) => set({ localStream }),
       onParticipantJoined: (p: RemoteParticipant) =>
         set((s) => ({ participants: [...s.participants, p] })),
@@ -41,6 +77,8 @@ export const useCallStore = create<Store>()((set, get) => ({
             p.id === id ? { ...p, isSpeaking } : p,
           ),
         })),
+      onLocalSpeakingChange: (isLocalSpeaking: boolean) =>
+        set({ isLocalSpeaking }),
       onPing: (ms: number) => set({ ping: ms }),
     });
     client = sfu;
@@ -57,6 +95,7 @@ export const useCallStore = create<Store>()((set, get) => ({
         localStream: null,
         participants: [],
         isMuted: false,
+        isLocalSpeaking: false,
       });
     }
   },
@@ -70,6 +109,7 @@ export const useCallStore = create<Store>()((set, get) => ({
       localStream: null,
       participants: [],
       isMuted: false,
+      isLocalSpeaking: false,
     });
   },
 
