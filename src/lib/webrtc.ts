@@ -55,6 +55,18 @@ function isWSMessage(value: unknown): value is WSMessage {
   return typeof record.event === 'string' && typeof record.data === 'string';
 }
 
+// Browser-native audio processing. All three ship in Chrome/Edge/Firefox and
+// degrade gracefully elsewhere — a browser that ignores a constraint it
+// doesn't support just falls back to the raw track instead of throwing.
+function buildAudioConstraints(deviceId?: string): MediaTrackConstraints {
+  return {
+    ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+    noiseSuppression: true,
+    echoCancellation: true,
+    autoGainControl: true,
+  };
+}
+
 // setSinkId is standard (Audio Output Devices API) but still missing from
 // TS's lib.dom types and unimplemented in Safari — feature-detect at call time.
 type SinkCapableElement = HTMLAudioElement & {
@@ -99,7 +111,7 @@ export class SFUClient {
     // 1. Mic only — audio-only SFU. Throws if the user denies access (or if
     // `exact` can't be satisfied, e.g. the chosen device was unplugged).
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: this.audioInputId ? { deviceId: { exact: this.audioInputId } } : true,
+      audio: buildAudioConstraints(this.audioInputId),
       video: false,
     });
     this.localStream = stream;
@@ -173,7 +185,7 @@ export class SFUClient {
     if (typeof window === 'undefined' || !this.pc || !this.localStream) return;
 
     const newStream = await navigator.mediaDevices.getUserMedia({
-      audio: { deviceId: { exact: deviceId } },
+      audio: buildAudioConstraints(deviceId),
       video: false,
     });
     const [newTrack] = newStream.getAudioTracks();
