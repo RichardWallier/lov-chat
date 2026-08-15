@@ -20,6 +20,11 @@ export interface SFUClientOptions {
   onSpeakingChange: (id: string, isSpeaking: boolean) => void;
   onLocalSpeakingChange: (isSpeaking: boolean) => void;
   onPing: (ms: number) => void;
+  // Mic to open with. `undefined`/omitted lets the browser pick its default.
+  audioInputId?: string;
+  // Speaker remote <audio> elements should play through. Applied via
+  // setSinkId; unsupported browsers (e.g. Safari) silently keep the default.
+  audioOutputId?: string;
 }
 
 interface WSMessage {
@@ -50,6 +55,12 @@ function isWSMessage(value: unknown): value is WSMessage {
   return typeof record.event === 'string' && typeof record.data === 'string';
 }
 
+// setSinkId is standard (Audio Output Devices API) but still missing from
+// TS's lib.dom types and unimplemented in Safari — feature-detect at call time.
+type SinkCapableElement = HTMLAudioElement & {
+  setSinkId?: (sinkId: string) => Promise<void>;
+};
+
 export class SFUClient {
   private readonly options: SFUClientOptions;
 
@@ -67,20 +78,28 @@ export class SFUClient {
   private readonly audioElements = new Map<string, HTMLAudioElement>();
   private readonly speakingMonitors = new Map<string, SpeakingMonitor>();
 
+  // Current device choices, kept live so mid-call switches (setAudioInput /
+  // setAudioOutput) and newly-created remote <audio> elements stay in sync.
+  private audioInputId: string | undefined;
+  private audioOutputId: string | undefined;
+
   // Polls the active ICE candidate pair's round-trip time for the latency badge.
   private latencyIntervalId: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: SFUClientOptions) {
     this.options = options;
+    this.audioInputId = options.audioInputId;
+    this.audioOutputId = options.audioOutputId;
   }
 
   async connect(): Promise<void> {
     if (typeof window === 'undefined') return;
     this.closing = false;
 
-    // 1. Mic only — audio-only SFU. Throws if the user denies access.
+    // 1. Mic only — audio-only SFU. Throws if the user denies access (or if
+    // `exact` can't be satisfied, e.g. the chosen device was unplugged).
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
+      audio: this.audioInputId ? { deviceId: { exact: this.audioInputId } } : true,
       video: false,
     });
     this.localStream = stream;
@@ -143,6 +162,65 @@ export class SFUClient {
 
     // 6. Report real media RTT (UDP path to the SFU) for the latency badge.
     this.startLatencyPolling();
+  }
+
+  // Swaps the live mic mid-call without renegotiating: opens the new device,
+  // replaces the track on the existing sender, restarts local VAD on it, and
+  // stops the old track. Safe to call before connect() too — it just updates
+  // the deviceId connect() will use.
+  async setAudioInput(deviceId: string): Promise<void> {
+    this.audioInputId = deviceId;
+    if (typeof window === 'undefined' || !this.pc || !this.localStream) return;
+
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      audio: { deviceId: { exact: deviceId } },
+      video: false,
+    });
+    const [newTrack] = newStream.getAudioTracks();
+    if (!newTrack) return;
+
+    const oldStream = this.localStream;
+    const [oldTrack] = oldStream.getAudioTracks();
+
+    // Carry the mute state over so switching mics doesn't un-mute you.
+    newTrack.enabled = oldTrack ? oldTrack.enabled : true;
+
+    const sender = this.pc.getSenders().find((s) => s.track?.kind === 'audio');
+    if (sender) {
+      await sender.replaceTrack(newTrack);
+    }
+
+    oldStream.getTracks().forEach((track) => track.stop());
+    this.localStream = newStream;
+    this.options.onLocalStream(newStream);
+
+    this.stopSpeakingDetection(LOCAL_MONITOR_KEY);
+    this.startSpeakingDetection(newStream, LOCAL_MONITOR_KEY, (speaking) =>
+      this.options.onLocalSpeakingChange(speaking),
+    );
+  }
+
+  // Points every remote <audio> element (existing and future) at the given
+  // output device. No-ops quietly where setSinkId isn't supported (Safari).
+  async setAudioOutput(deviceId: string): Promise<void> {
+    this.audioOutputId = deviceId;
+    if (typeof window === 'undefined') return;
+
+    await Promise.all(
+      [...this.audioElements.values()].map((element) =>
+        this.applySinkId(element, deviceId),
+      ),
+    );
+  }
+
+  private async applySinkId(element: HTMLAudioElement, deviceId: string): Promise<void> {
+    const sinkable = element as SinkCapableElement;
+    if (!sinkable.setSinkId) return;
+    try {
+      await sinkable.setSinkId(deviceId);
+    } catch {
+      // Device may have disappeared between enumeration and use — ignore.
+    }
   }
 
   disconnect(): void {
@@ -279,6 +357,9 @@ export class SFUClient {
       element.autoplay = true;
       this.audioElements.set(id, element);
       this.getAudioContainer()?.appendChild(element);
+      if (this.audioOutputId) {
+        void this.applySinkId(element, this.audioOutputId);
+      }
       this.options.onParticipantJoined({ id, stream, isSpeaking: false });
       this.startSpeakingDetection(stream, id, (speaking) =>
         this.options.onSpeakingChange(id, speaking),

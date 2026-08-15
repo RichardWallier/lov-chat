@@ -20,6 +20,8 @@ export const useCallStore = create<Store>()((set, get) => ({
   ping: null,
   localStream: null,
   participants: [],
+  audioInputId: null,
+  audioOutputId: null,
 
   join: async (roomId: string) => {
     // Guard on live status, NOT on `client`: a failed/dropped connection leaves
@@ -42,10 +44,14 @@ export const useCallStore = create<Store>()((set, get) => ({
       isLocalSpeaking: false,
     });
 
+    const { audioInputId, audioOutputId } = get();
+
     const sfu = new SFUClient({
       // Room ID is a path segment on the SFU: /ws/{roomID}. encodeURIComponent
       // keeps arbitrary room names (spaces, slashes) from breaking the URL.
       wsUrl: `${env.apiWsUrl}/ws/${encodeURIComponent(roomId)}`,
+      audioInputId: audioInputId ?? undefined,
+      audioOutputId: audioOutputId ?? undefined,
       onStatusChange: (status: ConnectionStatus) => {
         // 'failed' is terminal and never recovers on its own. Release the client
         // here so the next Join starts fresh, and reset the call state. Doing
@@ -121,5 +127,21 @@ export const useCallStore = create<Store>()((set, get) => ({
       track.enabled = !next;
     });
     set({ isMuted: next });
+  },
+
+  setAudioInput: async (deviceId: string) => {
+    // Always remember the choice for the next join(), even if we're not on a
+    // call right now.
+    set({ audioInputId: deviceId });
+    if (client) {
+      await client.setAudioInput(deviceId);
+    }
+  },
+
+  setAudioOutput: async (deviceId: string) => {
+    set({ audioOutputId: deviceId });
+    if (client) {
+      await client.setAudioOutput(deviceId);
+    }
   },
 }));
